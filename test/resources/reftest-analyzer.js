@@ -52,7 +52,7 @@ window.onload = function() {
 
   function hashParameters() {
     var result = { };
-    var params = window.location.hash.substr(1).split(/[&;]/);
+    var params = window.location.hash.substring(1).split(/[&;]/);
     for (var i = 0; i < params.length; i++) {
       var parts = params[i].split("=");
       result[parts[0]] = unescape(unescape(parts[1]));
@@ -68,7 +68,7 @@ window.onload = function() {
       ID("logEntry").value = params.log;
       logPasted();
     } else if (params.web) {
-      loadFromWeb(params.web); 
+      loadFromWeb(params.web);
     }
     ID("logEntry").focus();
   }
@@ -189,7 +189,7 @@ window.onload = function() {
         var random = match[2];
         var url = match[3];
         var extra = match[4];
-      
+
         gTestItems.push({
           pass: !state.match(/FAIL$/),
           // only one of the following three should ever be true
@@ -220,7 +220,7 @@ window.onload = function() {
     var table = document.getElementById("itemtable");
     while (table.childNodes.length > 0) {
       table.removeChild(table.childNodes[table.childNodes.length - 1]);
-    } 
+    }
     var tbody = document.createElement("tbody");
     table.appendChild(tbody);
 
@@ -234,7 +234,7 @@ window.onload = function() {
       var rowclass = item.pass ? "pass" : "fail";
       var td = document.createElement("td");
       var text = "";
-    
+
       if (item.unexpected) {
         text += "!";
         rowclass += " unexpected";
@@ -253,7 +253,7 @@ window.onload = function() {
       td = document.createElement("td");
       td.id = "url" + i;
       td.className = "url";
-    
+
       var match = item.url.match(/\/mozilla\/(.*)/);
       text = document.createTextNode(match ? match[1] : item.url);
       if (item.images.length > 0) {
@@ -285,13 +285,13 @@ window.onload = function() {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
-      canvas.width = 800;
-      canvas.height = 1000;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
 
       var ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
 
-      whenReady(ctx.getImageData(0, 0, 800, 1000));
+      whenReady(ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight));
     };
     img.src = gPath + src;
   }
@@ -323,11 +323,17 @@ window.onload = function() {
     }
     cell.style.display = "";
     getImageData(item.images[0], function(data) {
-      gImage1Data = data
+      gImage1Data = data;
+      syncSVGSize(gImage1Data);
     });
     getImageData(item.images[1], function(data) {
       gImage2Data = data
     });
+  }
+
+  function syncSVGSize(imageData) {
+    ID("svg").setAttribute("width", imageData.width);
+    ID("svg").setAttribute("height", imageData.height);
   }
 
   function showImage(i) {
@@ -397,7 +403,7 @@ window.onload = function() {
         var py = y + j;
         var p1 = gMagPixPaths[i + dx_hi][j + dy_hi][0];
         var p2 = gMagPixPaths[i + dx_hi][j + dy_hi][1];
-        if (px < 0 || py < 0 || px >= 800 || py >= 1000) {
+        if (px < 0 || py < 0 || px >= gImage1Data.width || py >= gImage1Data.height) {
           p1.setAttribute("fill", "#aaa");
           p2.setAttribute("fill", "#888");
         } else {
@@ -464,6 +470,9 @@ window.onload = function() {
         val = 1;
       }
       document.querySelector('input[name="which"][value="' + val + '"]').click();
+    } else if (event.which === 68) {
+      // 'd' toggle differences
+      document.getElementById("differences").click();
     } else if (event.which === 78 || event.which === 80) {
       // 'n' next image, 'p' previous image
       var select = gSelected;

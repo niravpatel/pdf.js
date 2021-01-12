@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -150,7 +148,7 @@ var CFFDictDataMap = {
     },
     '7': {
       name: 'FontMatrix',
-      operand: [0.001, 0, 0, 0.001, 0 , 0]
+      operand: [0.001, 0, 0, 0.001, 0, 0]
     },
     '8': {
       name: 'StrokeWidth',
@@ -311,4 +309,3 @@ var CFFDictPrivateDataMap = {
     operand: 0
   }
 };
-

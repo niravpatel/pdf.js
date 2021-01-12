@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +12,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals Cmd, ColorSpace, Dict, MozBlobBuilder, Name, PDFJS, Ref, URL,
-           Promise */
 
-'use strict';
+import "./compatibility.js";
 
-var globalScope = (typeof window === 'undefined') ? this : window;
+const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
+const FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
 
-var isWorker = (typeof window == 'undefined');
+// Permission flags from Table 22, Section 7.6.3.2 of the PDF specification.
+const PermissionFlag = {
+  PRINT: 0x04,
+  MODIFY_CONTENTS: 0x08,
+  COPY: 0x10,
+  MODIFY_ANNOTATIONS: 0x20,
+  FILL_INTERACTIVE_FORMS: 0x100,
+  COPY_FOR_ACCESSIBILITY: 0x200,
+  ASSEMBLE: 0x400,
+  PRINT_HIGH_QUALITY: 0x800,
+};
 
-var FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
-
-var TextRenderingMode = {
+const TextRenderingMode = {
   FILL: 0,
   STROKE: 1,
   FILL_STROKE: 2,
@@ -35,32 +40,181 @@ var TextRenderingMode = {
   FILL_STROKE_ADD_TO_PATH: 6,
   ADD_TO_PATH: 7,
   FILL_STROKE_MASK: 3,
-  ADD_TO_PATH_FLAG: 4
+  ADD_TO_PATH_FLAG: 4,
 };
 
-var ImageKind = {
+const ImageKind = {
   GRAYSCALE_1BPP: 1,
   RGB_24BPP: 2,
-  RGBA_32BPP: 3
+  RGBA_32BPP: 3,
 };
 
-// The global PDFJS object exposes the API
-// In production, it will be declared outside a global wrapper
-// In development, it will be declared here
-if (!globalScope.PDFJS) {
-  globalScope.PDFJS = {};
-}
+const AnnotationType = {
+  TEXT: 1,
+  LINK: 2,
+  FREETEXT: 3,
+  LINE: 4,
+  SQUARE: 5,
+  CIRCLE: 6,
+  POLYGON: 7,
+  POLYLINE: 8,
+  HIGHLIGHT: 9,
+  UNDERLINE: 10,
+  SQUIGGLY: 11,
+  STRIKEOUT: 12,
+  STAMP: 13,
+  CARET: 14,
+  INK: 15,
+  POPUP: 16,
+  FILEATTACHMENT: 17,
+  SOUND: 18,
+  MOVIE: 19,
+  WIDGET: 20,
+  SCREEN: 21,
+  PRINTERMARK: 22,
+  TRAPNET: 23,
+  WATERMARK: 24,
+  THREED: 25,
+  REDACT: 26,
+};
 
-globalScope.PDFJS.pdfBug = false;
+const AnnotationStateModelType = {
+  MARKED: "Marked",
+  REVIEW: "Review",
+};
 
-PDFJS.VERBOSITY_LEVELS = {
-  errors: 0,
-  warnings: 1,
-  infos: 5
+const AnnotationMarkedState = {
+  MARKED: "Marked",
+  UNMARKED: "Unmarked",
+};
+
+const AnnotationReviewState = {
+  ACCEPTED: "Accepted",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+  COMPLETED: "Completed",
+  NONE: "None",
+};
+
+const AnnotationReplyType = {
+  GROUP: "Group",
+  REPLY: "R",
+};
+
+const AnnotationFlag = {
+  INVISIBLE: 0x01,
+  HIDDEN: 0x02,
+  PRINT: 0x04,
+  NOZOOM: 0x08,
+  NOROTATE: 0x10,
+  NOVIEW: 0x20,
+  READONLY: 0x40,
+  LOCKED: 0x80,
+  TOGGLENOVIEW: 0x100,
+  LOCKEDCONTENTS: 0x200,
+};
+
+const AnnotationFieldFlag = {
+  READONLY: 0x0000001,
+  REQUIRED: 0x0000002,
+  NOEXPORT: 0x0000004,
+  MULTILINE: 0x0001000,
+  PASSWORD: 0x0002000,
+  NOTOGGLETOOFF: 0x0004000,
+  RADIO: 0x0008000,
+  PUSHBUTTON: 0x0010000,
+  COMBO: 0x0020000,
+  EDIT: 0x0040000,
+  SORT: 0x0080000,
+  FILESELECT: 0x0100000,
+  MULTISELECT: 0x0200000,
+  DONOTSPELLCHECK: 0x0400000,
+  DONOTSCROLL: 0x0800000,
+  COMB: 0x1000000,
+  RICHTEXT: 0x2000000,
+  RADIOSINUNISON: 0x2000000,
+  COMMITONSELCHANGE: 0x4000000,
+};
+
+const AnnotationBorderStyleType = {
+  SOLID: 1,
+  DASHED: 2,
+  BEVELED: 3,
+  INSET: 4,
+  UNDERLINE: 5,
+};
+
+const AnnotationActionEventType = {
+  E: "MouseEnter",
+  X: "MouseExit",
+  D: "MouseDown",
+  U: "MouseUp",
+  Fo: "Focus",
+  Bl: "Blur",
+  PO: "PageOpen",
+  PC: "PageClose",
+  PV: "PageVisible",
+  PI: "PageInvisible",
+  K: "Keystroke",
+  F: "Format",
+  V: "Validate",
+  C: "Calculate",
+};
+
+const DocumentActionEventType = {
+  WC: "WillClose",
+  WS: "WillSave",
+  DS: "DidSave",
+  WP: "WillPrint",
+  DP: "DidPrint",
+};
+
+const PageActionEventType = {
+  O: "PageOpen",
+  C: "PageClose",
+};
+
+const StreamType = {
+  UNKNOWN: "UNKNOWN",
+  FLATE: "FLATE",
+  LZW: "LZW",
+  DCT: "DCT",
+  JPX: "JPX",
+  JBIG: "JBIG",
+  A85: "A85",
+  AHX: "AHX",
+  CCF: "CCF",
+  RLX: "RLX", // PDF short name is 'RL', but telemetry requires three chars.
+};
+
+const FontType = {
+  UNKNOWN: "UNKNOWN",
+  TYPE1: "TYPE1",
+  TYPE1C: "TYPE1C",
+  CIDFONTTYPE0: "CIDFONTTYPE0",
+  CIDFONTTYPE0C: "CIDFONTTYPE0C",
+  TRUETYPE: "TRUETYPE",
+  CIDFONTTYPE2: "CIDFONTTYPE2",
+  TYPE3: "TYPE3",
+  OPENTYPE: "OPENTYPE",
+  TYPE0: "TYPE0",
+  MMTYPE1: "MMTYPE1",
+};
+
+const VerbosityLevel = {
+  ERRORS: 0,
+  WARNINGS: 1,
+  INFOS: 5,
+};
+
+const CMapCompressionType = {
+  NONE: 0,
+  BINARY: 1,
+  STREAM: 2,
 };
 
 // All the possible operations for an operator list.
-var OPS = PDFJS.OPS = {
+const OPS = {
   // Intentionally start from 1 so it is easy to spot bad operators that will be
   // 0's.
   dependency: 1,
@@ -149,321 +303,394 @@ var OPS = PDFJS.OPS = {
   paintImageMaskXObjectGroup: 84,
   paintImageXObject: 85,
   paintInlineImageXObject: 86,
-  paintInlineImageXObjectGroup: 87
+  paintInlineImageXObjectGroup: 87,
+  paintImageXObjectRepeat: 88,
+  paintImageMaskXObjectRepeat: 89,
+  paintSolidColorImageMask: 90,
+  constructPath: 91,
 };
+
+const UNSUPPORTED_FEATURES = {
+  /** @deprecated unused */
+  unknown: "unknown",
+  forms: "forms",
+  javaScript: "javaScript",
+  smask: "smask",
+  shadingPattern: "shadingPattern",
+  /** @deprecated unused */
+  font: "font",
+  errorTilingPattern: "errorTilingPattern",
+  errorExtGState: "errorExtGState",
+  errorXObject: "errorXObject",
+  errorFontLoadType3: "errorFontLoadType3",
+  errorFontState: "errorFontState",
+  errorFontMissing: "errorFontMissing",
+  errorFontTranslate: "errorFontTranslate",
+  errorColorSpace: "errorColorSpace",
+  errorOperatorList: "errorOperatorList",
+  errorFontToUnicode: "errorFontToUnicode",
+  errorFontLoadNative: "errorFontLoadNative",
+  errorFontGetPath: "errorFontGetPath",
+  errorMarkedContent: "errorMarkedContent",
+};
+
+const PasswordResponses = {
+  NEED_PASSWORD: 1,
+  INCORRECT_PASSWORD: 2,
+};
+
+let verbosity = VerbosityLevel.WARNINGS;
+
+function setVerbosityLevel(level) {
+  if (Number.isInteger(level)) {
+    verbosity = level;
+  }
+}
+
+function getVerbosityLevel() {
+  return verbosity;
+}
 
 // A notice for devs. These are good for things that are helpful to devs, such
 // as warning that Workers were disabled, which is important to devs but not
 // end users.
 function info(msg) {
-  if (PDFJS.verbosity >= PDFJS.VERBOSITY_LEVELS.infos) {
-    console.log('Info: ' + msg);
+  if (verbosity >= VerbosityLevel.INFOS) {
+    console.log(`Info: ${msg}`);
   }
 }
 
 // Non-fatal warnings.
 function warn(msg) {
-  if (PDFJS.verbosity >= PDFJS.VERBOSITY_LEVELS.warnings) {
-    console.log('Warning: ' + msg);
+  if (verbosity >= VerbosityLevel.WARNINGS) {
+    console.log(`Warning: ${msg}`);
   }
 }
 
-// Fatal errors that should trigger the fallback UI and halt execution by
-// throwing an exception.
-function error(msg) {
-  // If multiple arguments were passed, pass them all to the log function.
-  if (arguments.length > 1) {
-    var logArguments = ['Error:'];
-    logArguments.push.apply(logArguments, arguments);
-    console.log.apply(console, logArguments);
-    // Join the arguments into a single string for the lines below.
-    msg = [].join.call(arguments, ' ');
-  } else {
-    console.log('Error: ' + msg);
-  }
-  console.log(backtrace());
-  UnsupportedManager.notify(UNSUPPORTED_FEATURES.unknown);
+function unreachable(msg) {
   throw new Error(msg);
 }
 
-function backtrace() {
-  try {
-    throw new Error();
-  } catch (e) {
-    return e.stack ? e.stack.split('\n').slice(2).join('\n') : '';
-  }
-}
-
 function assert(cond, msg) {
-  if (!cond)
-    error(msg);
-}
-
-var UNSUPPORTED_FEATURES = PDFJS.UNSUPPORTED_FEATURES = {
-  unknown: 'unknown',
-  forms: 'forms',
-  javaScript: 'javaScript',
-  smask: 'smask',
-  shadingPattern: 'shadingPattern',
-  font: 'font'
-};
-
-var UnsupportedManager = PDFJS.UnsupportedManager =
-  (function UnsupportedManagerClosure() {
-  var listeners = [];
-  return {
-    listen: function (cb) {
-      listeners.push(cb);
-    },
-    notify: function (featureId) {
-      warn('Unsupported feature "' + featureId + '"');
-      for (var i = 0, ii = listeners.length; i < ii; i++) {
-        listeners[i](featureId);
-      }
-    }
-  };
-})();
-
-// Combines two URLs. The baseUrl shall be absolute URL. If the url is an
-// absolute URL, it will be returned as is.
-function combineUrl(baseUrl, url) {
-  if (!url)
-    return baseUrl;
-  if (/^[a-z][a-z0-9+\-.]*:/i.test(url))
-    return url;
-  if (url.charAt(0) == '/') {
-    // absolute path
-    var i = baseUrl.indexOf('://');
-    if (url.charAt(1) === '/') {
-      ++i;
-    } else {
-      i = baseUrl.indexOf('/', i + 3);
-    }
-    return baseUrl.substring(0, i) + url;
-  } else {
-    // relative path
-    var pathLength = baseUrl.length, i;
-    i = baseUrl.lastIndexOf('#');
-    pathLength = i >= 0 ? i : pathLength;
-    i = baseUrl.lastIndexOf('?', pathLength);
-    pathLength = i >= 0 ? i : pathLength;
-    var prefixLength = baseUrl.lastIndexOf('/', pathLength);
-    return baseUrl.substring(0, prefixLength + 1) + url;
+  if (!cond) {
+    unreachable(msg);
   }
 }
 
-// Validates if URL is safe and allowed, e.g. to avoid XSS.
-function isValidUrl(url, allowRelative) {
+// Checks if URLs have the same origin. For non-HTTP based URLs, returns false.
+function isSameOrigin(baseUrl, otherUrl) {
+  let base;
+  try {
+    base = new URL(baseUrl);
+    if (!base.origin || base.origin === "null") {
+      return false; // non-HTTP url
+    }
+  } catch (e) {
+    return false;
+  }
+
+  const other = new URL(otherUrl, base);
+  return base.origin === other.origin;
+}
+
+// Checks if URLs use one of the allowed protocols, e.g. to avoid XSS.
+function _isValidProtocol(url) {
   if (!url) {
     return false;
   }
-  // RFC 3986 (http://tools.ietf.org/html/rfc3986#section-3.1)
-  // scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
-  var protocol = /^[a-z][a-z0-9+\-.]*(?=:)/i.exec(url);
-  if (!protocol) {
-    return allowRelative;
-  }
-  protocol = protocol[0].toLowerCase();
-  switch (protocol) {
-    case 'http':
-    case 'https':
-    case 'ftp':
-    case 'mailto':
+  switch (url.protocol) {
+    case "http:":
+    case "https:":
+    case "ftp:":
+    case "mailto:":
+    case "tel:":
       return true;
     default:
       return false;
   }
 }
-PDFJS.isValidUrl = isValidUrl;
 
-// In a well-formed PDF, |cond| holds.  If it doesn't, subsequent
-// behavior is undefined.
-function assertWellFormed(cond, msg) {
-  if (!cond)
-    error(msg);
+/**
+ * Attempts to create a valid absolute URL.
+ *
+ * @param {URL|string} url - An absolute, or relative, URL.
+ * @param {URL|string} baseUrl - An absolute URL.
+ * @returns Either a valid {URL}, or `null` otherwise.
+ */
+function createValidAbsoluteUrl(url, baseUrl) {
+  if (!url) {
+    return null;
+  }
+  try {
+    const absoluteUrl = baseUrl ? new URL(url, baseUrl) : new URL(url);
+    if (_isValidProtocol(absoluteUrl)) {
+      return absoluteUrl;
+    }
+  } catch (ex) {
+    /* `new URL()` will throw on incorrect data. */
+  }
+  return null;
 }
 
 function shadow(obj, prop, value) {
-  Object.defineProperty(obj, prop, { value: value,
-                                     enumerable: true,
-                                     configurable: true,
-                                     writable: false });
+  Object.defineProperty(obj, prop, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: false,
+  });
   return value;
 }
 
-var PasswordResponses = PDFJS.PasswordResponses = {
-  NEED_PASSWORD: 1,
-  INCORRECT_PASSWORD: 2
-};
+/**
+ * @type {any}
+ */
+const BaseException = (function BaseExceptionClosure() {
+  // eslint-disable-next-line no-shadow
+  function BaseException(message) {
+    if (this.constructor === BaseException) {
+      unreachable("Cannot initialize BaseException.");
+    }
+    this.message = message;
+    this.name = this.constructor.name;
+  }
+  BaseException.prototype = new Error();
+  BaseException.constructor = BaseException;
 
-var PasswordException = (function PasswordExceptionClosure() {
-  function PasswordException(msg, code) {
-    this.name = 'PasswordException';
-    this.message = msg;
+  return BaseException;
+})();
+
+class PasswordException extends BaseException {
+  constructor(msg, code) {
+    super(msg);
     this.code = code;
   }
+}
 
-  PasswordException.prototype = new Error();
-  PasswordException.constructor = PasswordException;
-
-  return PasswordException;
-})();
-
-var UnknownErrorException = (function UnknownErrorExceptionClosure() {
-  function UnknownErrorException(msg, details) {
-    this.name = 'UnknownErrorException';
-    this.message = msg;
+class UnknownErrorException extends BaseException {
+  constructor(msg, details) {
+    super(msg);
     this.details = details;
   }
+}
 
-  UnknownErrorException.prototype = new Error();
-  UnknownErrorException.constructor = UnknownErrorException;
+class InvalidPDFException extends BaseException {}
 
-  return UnknownErrorException;
-})();
+class MissingPDFException extends BaseException {}
 
-var InvalidPDFException = (function InvalidPDFExceptionClosure() {
-  function InvalidPDFException(msg) {
-    this.name = 'InvalidPDFException';
-    this.message = msg;
+class UnexpectedResponseException extends BaseException {
+  constructor(msg, status) {
+    super(msg);
+    this.status = status;
   }
+}
 
-  InvalidPDFException.prototype = new Error();
-  InvalidPDFException.constructor = InvalidPDFException;
+/**
+ * Error caused during parsing PDF data.
+ */
+class FormatError extends BaseException {}
 
-  return InvalidPDFException;
-})();
+/**
+ * Error used to indicate task cancellation.
+ */
+class AbortException extends BaseException {}
 
-var MissingPDFException = (function MissingPDFExceptionClosure() {
-  function MissingPDFException(msg) {
-    this.name = 'MissingPDFException';
-    this.message = msg;
+const NullCharactersRegExp = /\x00/g;
+
+/**
+ * @param {string} str
+ */
+function removeNullCharacters(str) {
+  if (typeof str !== "string") {
+    warn("The argument for removeNullCharacters must be a string.");
+    return str;
   }
-
-  MissingPDFException.prototype = new Error();
-  MissingPDFException.constructor = MissingPDFException;
-
-  return MissingPDFException;
-})();
-
-var NotImplementedException = (function NotImplementedExceptionClosure() {
-  function NotImplementedException(msg) {
-    this.message = msg;
-  }
-
-  NotImplementedException.prototype = new Error();
-  NotImplementedException.prototype.name = 'NotImplementedException';
-  NotImplementedException.constructor = NotImplementedException;
-
-  return NotImplementedException;
-})();
-
-var MissingDataException = (function MissingDataExceptionClosure() {
-  function MissingDataException(begin, end) {
-    this.begin = begin;
-    this.end = end;
-    this.message = 'Missing data [' + begin + ', ' + end + ')';
-  }
-
-  MissingDataException.prototype = new Error();
-  MissingDataException.prototype.name = 'MissingDataException';
-  MissingDataException.constructor = MissingDataException;
-
-  return MissingDataException;
-})();
-
-var XRefParseException = (function XRefParseExceptionClosure() {
-  function XRefParseException(msg) {
-    this.message = msg;
-  }
-
-  XRefParseException.prototype = new Error();
-  XRefParseException.prototype.name = 'XRefParseException';
-  XRefParseException.constructor = XRefParseException;
-
-  return XRefParseException;
-})();
-
+  return str.replace(NullCharactersRegExp, "");
+}
 
 function bytesToString(bytes) {
-  var strBuf = [];
-  var length = bytes.length;
-  for (var n = 0; n < length; ++n) {
-    strBuf.push(String.fromCharCode(bytes[n]));
+  assert(
+    bytes !== null && typeof bytes === "object" && bytes.length !== undefined,
+    "Invalid argument for bytesToString"
+  );
+  const length = bytes.length;
+  const MAX_ARGUMENT_COUNT = 8192;
+  if (length < MAX_ARGUMENT_COUNT) {
+    return String.fromCharCode.apply(null, bytes);
   }
-  return strBuf.join('');
+  const strBuf = [];
+  for (let i = 0; i < length; i += MAX_ARGUMENT_COUNT) {
+    const chunkEnd = Math.min(i + MAX_ARGUMENT_COUNT, length);
+    const chunk = bytes.subarray(i, chunkEnd);
+    strBuf.push(String.fromCharCode.apply(null, chunk));
+  }
+  return strBuf.join("");
 }
 
 function stringToBytes(str) {
-  var length = str.length;
-  var bytes = new Uint8Array(length);
-  for (var n = 0; n < length; ++n)
-    bytes[n] = str.charCodeAt(n) & 0xFF;
+  assert(typeof str === "string", "Invalid argument for stringToBytes");
+  const length = str.length;
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; ++i) {
+    bytes[i] = str.charCodeAt(i) & 0xff;
+  }
   return bytes;
 }
 
-var IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
+/**
+ * Gets length of the array (Array, Uint8Array, or string) in bytes.
+ * @param {Array<any>|Uint8Array|string} arr
+ * @returns {number}
+ */
+function arrayByteLength(arr) {
+  if (arr.length !== undefined) {
+    return arr.length;
+  }
+  assert(arr.byteLength !== undefined, "arrayByteLength - invalid argument.");
+  return arr.byteLength;
+}
 
-var Util = PDFJS.Util = (function UtilClosure() {
-  function Util() {}
+/**
+ * Combines array items (arrays) into single Uint8Array object.
+ * @param {Array<Array<any>|Uint8Array|string>} arr - the array of the arrays
+ *   (Array, Uint8Array, or string).
+ * @returns {Uint8Array}
+ */
+function arraysToBytes(arr) {
+  const length = arr.length;
+  // Shortcut: if first and only item is Uint8Array, return it.
+  if (length === 1 && arr[0] instanceof Uint8Array) {
+    return arr[0];
+  }
+  let resultLength = 0;
+  for (let i = 0; i < length; i++) {
+    resultLength += arrayByteLength(arr[i]);
+  }
+  let pos = 0;
+  const data = new Uint8Array(resultLength);
+  for (let i = 0; i < length; i++) {
+    let item = arr[i];
+    if (!(item instanceof Uint8Array)) {
+      if (typeof item === "string") {
+        item = stringToBytes(item);
+      } else {
+        item = new Uint8Array(item);
+      }
+    }
+    const itemLength = item.byteLength;
+    data.set(item, pos);
+    pos += itemLength;
+  }
+  return data;
+}
 
-  Util.makeCssRgb = function Util_makeCssRgb(rgb) {
-    return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-  };
+function string32(value) {
+  return String.fromCharCode(
+    (value >> 24) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 8) & 0xff,
+    value & 0xff
+  );
+}
 
-  Util.makeCssCmyk = function Util_makeCssCmyk(cmyk) {
-    var rgb = ColorSpace.singletons.cmyk.getRgb(cmyk, 0);
-    return Util.makeCssRgb(rgb);
-  };
+function objectSize(obj) {
+  return Object.keys(obj).length;
+}
+
+// Ensures that the returned Object has a `null` prototype.
+function objectFromEntries(iterable) {
+  return Object.assign(Object.create(null), Object.fromEntries(iterable));
+}
+
+// Checks the endianness of the platform.
+function isLittleEndian() {
+  const buffer8 = new Uint8Array(4);
+  buffer8[0] = 1;
+  const view32 = new Uint32Array(buffer8.buffer, 0, 1);
+  return view32[0] === 1;
+}
+const IsLittleEndianCached = {
+  get value() {
+    return shadow(this, "value", isLittleEndian());
+  },
+};
+
+// Checks if it's possible to eval JS expressions.
+function isEvalSupported() {
+  try {
+    new Function(""); // eslint-disable-line no-new, no-new-func
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+const IsEvalSupportedCached = {
+  get value() {
+    return shadow(this, "value", isEvalSupported());
+  },
+};
+
+const hexNumbers = [...Array(256).keys()].map(n =>
+  n.toString(16).padStart(2, "0")
+);
+
+class Util {
+  static makeHexColor(r, g, b) {
+    return `#${hexNumbers[r]}${hexNumbers[g]}${hexNumbers[b]}`;
+  }
 
   // Concatenates two transformation matrices together and returns the result.
-  Util.transform = function Util_transform(m1, m2) {
+  static transform(m1, m2) {
     return [
       m1[0] * m2[0] + m1[2] * m2[1],
       m1[1] * m2[0] + m1[3] * m2[1],
       m1[0] * m2[2] + m1[2] * m2[3],
       m1[1] * m2[2] + m1[3] * m2[3],
       m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
-      m1[1] * m2[4] + m1[3] * m2[5] + m1[5]
+      m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
     ];
-  };
+  }
 
   // For 2d affine transforms
-  Util.applyTransform = function Util_applyTransform(p, m) {
-    var xt = p[0] * m[0] + p[1] * m[2] + m[4];
-    var yt = p[0] * m[1] + p[1] * m[3] + m[5];
+  static applyTransform(p, m) {
+    const xt = p[0] * m[0] + p[1] * m[2] + m[4];
+    const yt = p[0] * m[1] + p[1] * m[3] + m[5];
     return [xt, yt];
-  };
+  }
 
-  Util.applyInverseTransform = function Util_applyInverseTransform(p, m) {
-    var d = m[0] * m[3] - m[1] * m[2];
-    var xt = (p[0] * m[3] - p[1] * m[2] + m[2] * m[5] - m[4] * m[3]) / d;
-    var yt = (-p[0] * m[1] + p[1] * m[0] + m[4] * m[1] - m[5] * m[0]) / d;
+  static applyInverseTransform(p, m) {
+    const d = m[0] * m[3] - m[1] * m[2];
+    const xt = (p[0] * m[3] - p[1] * m[2] + m[2] * m[5] - m[4] * m[3]) / d;
+    const yt = (-p[0] * m[1] + p[1] * m[0] + m[4] * m[1] - m[5] * m[0]) / d;
     return [xt, yt];
-  };
+  }
 
   // Applies the transform to the rectangle and finds the minimum axially
   // aligned bounding box.
-  Util.getAxialAlignedBoundingBox =
-    function Util_getAxialAlignedBoundingBox(r, m) {
-
-    var p1 = Util.applyTransform(r, m);
-    var p2 = Util.applyTransform(r.slice(2, 4), m);
-    var p3 = Util.applyTransform([r[0], r[3]], m);
-    var p4 = Util.applyTransform([r[2], r[1]], m);
+  static getAxialAlignedBoundingBox(r, m) {
+    const p1 = Util.applyTransform(r, m);
+    const p2 = Util.applyTransform(r.slice(2, 4), m);
+    const p3 = Util.applyTransform([r[0], r[3]], m);
+    const p4 = Util.applyTransform([r[2], r[1]], m);
     return [
       Math.min(p1[0], p2[0], p3[0], p4[0]),
       Math.min(p1[1], p2[1], p3[1], p4[1]),
       Math.max(p1[0], p2[0], p3[0], p4[0]),
-      Math.max(p1[1], p2[1], p3[1], p4[1])
+      Math.max(p1[1], p2[1], p3[1], p4[1]),
     ];
-  };
+  }
 
-  Util.inverseTransform = function Util_inverseTransform(m) {
-    var d = m[0] * m[3] - m[1] * m[2];
-    return [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d,
-      (m[2] * m[5] - m[4] * m[3]) / d, (m[4] * m[1] - m[5] * m[0]) / d];
-  };
+  static inverseTransform(m) {
+    const d = m[0] * m[3] - m[1] * m[2];
+    return [
+      m[3] / d,
+      -m[1] / d,
+      -m[2] / d,
+      m[0] / d,
+      (m[2] * m[5] - m[4] * m[3]) / d,
+      (m[4] * m[1] - m[5] * m[0]) / d,
+    ];
+  }
 
   // Apply a generic 3d matrix M on a 3-vector v:
   //   | a b c |   | X |
@@ -471,44 +698,42 @@ var Util = PDFJS.Util = (function UtilClosure() {
   //   | g h i |   | Z |
   // M is assumed to be serialized as [a,b,c,d,e,f,g,h,i],
   // with v as [X,Y,Z]
-  Util.apply3dTransform = function Util_apply3dTransform(m, v) {
+  static apply3dTransform(m, v) {
     return [
       m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
       m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
-      m[6] * v[0] + m[7] * v[1] + m[8] * v[2]
+      m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
     ];
-  };
+  }
 
   // This calculation uses Singular Value Decomposition.
   // The SVD can be represented with formula A = USV. We are interested in the
   // matrix S here because it represents the scale values.
-  Util.singularValueDecompose2dScale =
-    function Util_singularValueDecompose2dScale(m) {
-
-    var transpose = [m[0], m[2], m[1], m[3]];
+  static singularValueDecompose2dScale(m) {
+    const transpose = [m[0], m[2], m[1], m[3]];
 
     // Multiply matrix m with its transpose.
-    var a = m[0] * transpose[0] + m[1] * transpose[2];
-    var b = m[0] * transpose[1] + m[1] * transpose[3];
-    var c = m[2] * transpose[0] + m[3] * transpose[2];
-    var d = m[2] * transpose[1] + m[3] * transpose[3];
+    const a = m[0] * transpose[0] + m[1] * transpose[2];
+    const b = m[0] * transpose[1] + m[1] * transpose[3];
+    const c = m[2] * transpose[0] + m[3] * transpose[2];
+    const d = m[2] * transpose[1] + m[3] * transpose[3];
 
     // Solve the second degree polynomial to get roots.
-    var first = (a + d) / 2;
-    var second = Math.sqrt((a + d) * (a + d) - 4 * (a * d - c * b)) / 2;
-    var sx = first + second || 1;
-    var sy = first - second || 1;
+    const first = (a + d) / 2;
+    const second = Math.sqrt((a + d) * (a + d) - 4 * (a * d - c * b)) / 2;
+    const sx = first + second || 1;
+    const sy = first - second || 1;
 
     // Scale values are the square roots of the eigenvalues.
     return [Math.sqrt(sx), Math.sqrt(sy)];
-  };
+  }
 
   // Normalize rectangle rect=[x1, y1, x2, y2] so that (x1,y1) < (x2,y2)
   // For coordinate systems whose origin lies in the bottom-left, this
   // means normalization to (BL,TR) ordering. For systems with origin in the
   // top-left, this means (TL,BR) ordering.
-  Util.normalizeRect = function Util_normalizeRect(rect) {
-    var r = rect.slice(0); // clone rect
+  static normalizeRect(rect) {
+    const r = rect.slice(0); // clone rect
     if (rect[0] > rect[2]) {
       r[0] = rect[2];
       r[2] = rect[0];
@@ -518,192 +743,54 @@ var Util = PDFJS.Util = (function UtilClosure() {
       r[3] = rect[1];
     }
     return r;
-  };
+  }
 
   // Returns a rectangle [x1, y1, x2, y2] corresponding to the
   // intersection of rect1 and rect2. If no intersection, returns 'false'
   // The rectangle coordinates of rect1, rect2 should be [x1, y1, x2, y2]
-  Util.intersect = function Util_intersect(rect1, rect2) {
+  static intersect(rect1, rect2) {
     function compare(a, b) {
       return a - b;
     }
 
     // Order points along the axes
-    var orderedX = [rect1[0], rect1[2], rect2[0], rect2[2]].sort(compare),
-        orderedY = [rect1[1], rect1[3], rect2[1], rect2[3]].sort(compare),
-        result = [];
+    const orderedX = [rect1[0], rect1[2], rect2[0], rect2[2]].sort(compare);
+    const orderedY = [rect1[1], rect1[3], rect2[1], rect2[3]].sort(compare);
+    const result = [];
 
     rect1 = Util.normalizeRect(rect1);
     rect2 = Util.normalizeRect(rect2);
 
     // X: first and second points belong to different rectangles?
-    if ((orderedX[0] === rect1[0] && orderedX[1] === rect2[0]) ||
-        (orderedX[0] === rect2[0] && orderedX[1] === rect1[0])) {
+    if (
+      (orderedX[0] === rect1[0] && orderedX[1] === rect2[0]) ||
+      (orderedX[0] === rect2[0] && orderedX[1] === rect1[0])
+    ) {
       // Intersection must be between second and third points
       result[0] = orderedX[1];
       result[2] = orderedX[2];
     } else {
-      return false;
+      return null;
     }
 
     // Y: first and second points belong to different rectangles?
-    if ((orderedY[0] === rect1[1] && orderedY[1] === rect2[1]) ||
-        (orderedY[0] === rect2[1] && orderedY[1] === rect1[1])) {
+    if (
+      (orderedY[0] === rect1[1] && orderedY[1] === rect2[1]) ||
+      (orderedY[0] === rect2[1] && orderedY[1] === rect1[1])
+    ) {
       // Intersection must be between second and third points
       result[1] = orderedY[1];
       result[3] = orderedY[2];
     } else {
-      return false;
+      return null;
     }
 
     return result;
-  };
-
-  Util.sign = function Util_sign(num) {
-    return num < 0 ? -1 : 1;
-  };
-
-  // TODO(mack): Rename appendToArray
-  Util.concatenateToArray = function concatenateToArray(arr1, arr2) {
-    Array.prototype.push.apply(arr1, arr2);
-  };
-
-  Util.prependToArray = function concatenateToArray(arr1, arr2) {
-    Array.prototype.unshift.apply(arr1, arr2);
-  };
-
-  Util.extendObj = function extendObj(obj1, obj2) {
-    for (var key in obj2) {
-      obj1[key] = obj2[key];
-    }
-  };
-
-  Util.getInheritableProperty = function Util_getInheritableProperty(dict,
-                                                                     name) {
-    while (dict && !dict.has(name)) {
-      dict = dict.get('Parent');
-    }
-    if (!dict) {
-      return null;
-    }
-    return dict.get(name);
-  };
-
-  Util.inherit = function Util_inherit(sub, base, prototype) {
-    sub.prototype = Object.create(base.prototype);
-    sub.prototype.constructor = sub;
-    for (var prop in prototype) {
-      sub.prototype[prop] = prototype[prop];
-    }
-  };
-
-  Util.loadScript = function Util_loadScript(src, callback) {
-    var script = document.createElement('script');
-    var loaded = false;
-    script.setAttribute('src', src);
-    if (callback) {
-      script.onload = function() {
-        if (!loaded) {
-          callback();
-        }
-        loaded = true;
-      };
-    }
-    document.getElementsByTagName('head')[0].appendChild(script);
-  };
-
-  return Util;
-})();
-
-var PageViewport = PDFJS.PageViewport = (function PageViewportClosure() {
-  function PageViewport(viewBox, scale, rotation, offsetX, offsetY, dontFlip) {
-    this.viewBox = viewBox;
-    this.scale = scale;
-    this.rotation = rotation;
-    this.offsetX = offsetX;
-    this.offsetY = offsetY;
-
-    // creating transform to convert pdf coordinate system to the normal
-    // canvas like coordinates taking in account scale and rotation
-    var centerX = (viewBox[2] + viewBox[0]) / 2;
-    var centerY = (viewBox[3] + viewBox[1]) / 2;
-    var rotateA, rotateB, rotateC, rotateD;
-    rotation = rotation % 360;
-    rotation = rotation < 0 ? rotation + 360 : rotation;
-    switch (rotation) {
-      case 180:
-        rotateA = -1; rotateB = 0; rotateC = 0; rotateD = 1;
-        break;
-      case 90:
-        rotateA = 0; rotateB = 1; rotateC = 1; rotateD = 0;
-        break;
-      case 270:
-        rotateA = 0; rotateB = -1; rotateC = -1; rotateD = 0;
-        break;
-      //case 0:
-      default:
-        rotateA = 1; rotateB = 0; rotateC = 0; rotateD = -1;
-        break;
-    }
-
-    if (dontFlip) {
-      rotateC = -rotateC; rotateD = -rotateD;
-    }
-
-    var offsetCanvasX, offsetCanvasY;
-    var width, height;
-    if (rotateA === 0) {
-      offsetCanvasX = Math.abs(centerY - viewBox[1]) * scale + offsetX;
-      offsetCanvasY = Math.abs(centerX - viewBox[0]) * scale + offsetY;
-      width = Math.abs(viewBox[3] - viewBox[1]) * scale;
-      height = Math.abs(viewBox[2] - viewBox[0]) * scale;
-    } else {
-      offsetCanvasX = Math.abs(centerX - viewBox[0]) * scale + offsetX;
-      offsetCanvasY = Math.abs(centerY - viewBox[1]) * scale + offsetY;
-      width = Math.abs(viewBox[2] - viewBox[0]) * scale;
-      height = Math.abs(viewBox[3] - viewBox[1]) * scale;
-    }
-    // creating transform for the following operations:
-    // translate(-centerX, -centerY), rotate and flip vertically,
-    // scale, and translate(offsetCanvasX, offsetCanvasY)
-    this.transform = [
-      rotateA * scale,
-      rotateB * scale,
-      rotateC * scale,
-      rotateD * scale,
-      offsetCanvasX - rotateA * scale * centerX - rotateC * scale * centerY,
-      offsetCanvasY - rotateB * scale * centerX - rotateD * scale * centerY
-    ];
-
-    this.width = width;
-    this.height = height;
-    this.fontScale = scale;
   }
-  PageViewport.prototype = {
-    clone: function PageViewPort_clone(args) {
-      args = args || {};
-      var scale = 'scale' in args ? args.scale : this.scale;
-      var rotation = 'rotation' in args ? args.rotation : this.rotation;
-      return new PageViewport(this.viewBox.slice(), scale, rotation,
-                              this.offsetX, this.offsetY, args.dontFlip);
-    },
-    convertToViewportPoint: function PageViewport_convertToViewportPoint(x, y) {
-      return Util.applyTransform([x, y], this.transform);
-    },
-    convertToViewportRectangle:
-      function PageViewport_convertToViewportRectangle(rect) {
-      var tl = Util.applyTransform([rect[0], rect[1]], this.transform);
-      var br = Util.applyTransform([rect[2], rect[3]], this.transform);
-      return [tl[0], tl[1], br[0], br[1]];
-    },
-    convertToPdfPoint: function PageViewport_convertToPdfPoint(x, y) {
-      return Util.applyInverseTransform([x, y], this.transform);
-    }
-  };
-  return PageViewport;
-})();
+}
 
-var PDFStringTranslateTable = [
+// prettier-ignore
+const PDFStringTranslateTable = [
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0x2D8, 0x2C7, 0x2C6, 0x2D9, 0x2DD, 0x2DB, 0x2DA, 0x2DC, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -716,589 +803,282 @@ var PDFStringTranslateTable = [
 ];
 
 function stringToPDFString(str) {
-  var i, n = str.length, strBuf = [];
-  if (str[0] === '\xFE' && str[1] === '\xFF') {
+  const length = str.length,
+    strBuf = [];
+  if (str[0] === "\xFE" && str[1] === "\xFF") {
     // UTF16BE BOM
-    for (i = 2; i < n; i += 2) {
-      strBuf.push(String.fromCharCode(
-        (str.charCodeAt(i) << 8) | str.charCodeAt(i + 1)));
+    for (let i = 2; i < length; i += 2) {
+      strBuf.push(
+        String.fromCharCode((str.charCodeAt(i) << 8) | str.charCodeAt(i + 1))
+      );
+    }
+  } else if (str[0] === "\xFF" && str[1] === "\xFE") {
+    // UTF16LE BOM
+    for (let i = 2; i < length; i += 2) {
+      strBuf.push(
+        String.fromCharCode((str.charCodeAt(i + 1) << 8) | str.charCodeAt(i))
+      );
     }
   } else {
-    for (i = 0; i < n; ++i) {
-      var code = PDFStringTranslateTable[str.charCodeAt(i)];
+    for (let i = 0; i < length; ++i) {
+      const code = PDFStringTranslateTable[str.charCodeAt(i)];
       strBuf.push(code ? String.fromCharCode(code) : str.charAt(i));
     }
   }
-  return strBuf.join('');
+  return strBuf.join("");
+}
+
+function escapeString(str) {
+  // replace "(", ")", "\n", "\r" and "\"
+  // by "\(", "\)", "\\n", "\\r" and "\\"
+  // in order to write it in a PDF file.
+  return str.replace(/([()\\\n\r])/g, match => {
+    if (match === "\n") {
+      return "\\n";
+    } else if (match === "\r") {
+      return "\\r";
+    }
+    return `\\${match}`;
+  });
+}
+
+function isAscii(str) {
+  return /^[\x00-\x7F]*$/.test(str);
+}
+
+function stringToUTF16BEString(str) {
+  const buf = ["\xFE\xFF"];
+  for (let i = 0, ii = str.length; i < ii; i++) {
+    const char = str.charCodeAt(i);
+    buf.push(String.fromCharCode((char >> 8) & 0xff));
+    buf.push(String.fromCharCode(char & 0xff));
+  }
+  return buf.join("");
 }
 
 function stringToUTF8String(str) {
   return decodeURIComponent(escape(str));
 }
 
-function isEmptyObj(obj) {
-  for (var key in obj) {
-    return false;
-  }
-  return true;
+function utf8StringToString(str) {
+  return unescape(encodeURIComponent(str));
 }
 
 function isBool(v) {
-  return typeof v == 'boolean';
-}
-
-function isInt(v) {
-  return typeof v == 'number' && ((v | 0) == v);
+  return typeof v === "boolean";
 }
 
 function isNum(v) {
-  return typeof v == 'number';
+  return typeof v === "number";
 }
 
 function isString(v) {
-  return typeof v == 'string';
-}
-
-function isNull(v) {
-  return v === null;
-}
-
-function isName(v) {
-  return v instanceof Name;
-}
-
-function isCmd(v, cmd) {
-  return v instanceof Cmd && (!cmd || v.cmd == cmd);
-}
-
-function isDict(v, type) {
-  if (!(v instanceof Dict)) {
-    return false;
-  }
-  if (!type) {
-    return true;
-  }
-  var dictType = v.get('Type');
-  return isName(dictType) && dictType.name == type;
-}
-
-function isArray(v) {
-  return v instanceof Array;
-}
-
-function isStream(v) {
-  return typeof v == 'object' && v !== null && v !== undefined &&
-         ('getBytes' in v);
+  return typeof v === "string";
 }
 
 function isArrayBuffer(v) {
-  return typeof v == 'object' && v !== null && v !== undefined &&
-         ('byteLength' in v);
+  return typeof v === "object" && v !== null && v.byteLength !== undefined;
 }
 
-function isRef(v) {
-  return v instanceof Ref;
+function isArrayEqual(arr1, arr2) {
+  if (arr1.length !== arr2.length) {
+    return false;
+  }
+  return arr1.every(function (element, index) {
+    return element === arr2[index];
+  });
 }
 
-function isPDFFunction(v) {
-  var fnDict;
-  if (typeof v != 'object')
-    return false;
-  else if (isDict(v))
-    fnDict = v;
-  else if (isStream(v))
-    fnDict = v.dict;
-  else
-    return false;
-  return fnDict.has('FunctionType');
+function getModificationDate(date = new Date()) {
+  const buffer = [
+    date.getUTCFullYear().toString(),
+    (date.getUTCMonth() + 1).toString().padStart(2, "0"),
+    date.getUTCDate().toString().padStart(2, "0"),
+    date.getUTCHours().toString().padStart(2, "0"),
+    date.getUTCMinutes().toString().padStart(2, "0"),
+    date.getUTCSeconds().toString().padStart(2, "0"),
+  ];
+
+  return buffer.join("");
 }
 
 /**
- * Legacy support for PDFJS Promise implementation.
- * TODO remove eventually
- */
-var LegacyPromise = PDFJS.LegacyPromise = (function LegacyPromiseClosure() {
-  return function LegacyPromise() {
-    var resolve, reject;
-    var promise = new Promise(function (resolve_, reject_) {
-      resolve = resolve_;
-      reject = reject_;
-    });
-    promise.resolve = resolve;
-    promise.reject = reject;
-    return promise;
-  };
-})();
-
-/**
- * Polyfill for Promises:
- * The following promise implementation tries to generally implment the
- * Promise/A+ spec. Some notable differences from other promise libaries are:
- * - There currently isn't a seperate deferred and promise object.
- * - Unhandled rejections eventually show an error if they aren't handled.
+ * Promise Capability object.
  *
- * Based off of the work in:
- * https://bugzilla.mozilla.org/show_bug.cgi?id=810490
+ * @typedef {Object} PromiseCapability
+ * @property {Promise<any>} promise - A Promise object.
+ * @property {boolean} settled - If the Promise has been fulfilled/rejected.
+ * @property {function} resolve - Fulfills the Promise.
+ * @property {function} reject - Rejects the Promise.
  */
-(function PromiseClosure() {
-  if (globalScope.Promise) {
-    // Promises existing in the DOM/Worker, checking presence of all/resolve
-    if (typeof globalScope.Promise.all !== 'function') {
-      globalScope.Promise.all = function (iterable) {
-        var count = 0, results = [], resolve, reject;
-        var promise = new globalScope.Promise(function (resolve_, reject_) {
-          resolve = resolve_;
-          reject = reject_;
-        });
-        iterable.forEach(function (p, i) {
-          count++;
-          p.then(function (result) {
-            results[i] = result;
-            count--;
-            if (count === 0) {
-              resolve(results);
-            }
-          }, reject);
-        });
-        if (count === 0) {
-          resolve(results);
-        }
-        return promise;
-      };
-    }
-    if (typeof globalScope.Promise.resolve !== 'function') {
-      globalScope.Promise.resolve = function (x) {
-        return new globalScope.Promise(function (resolve) { resolve(x); });
-      };
-    }
-    return;
-  }
-//#if !MOZCENTRAL
-  var STATUS_PENDING = 0;
-  var STATUS_RESOLVED = 1;
-  var STATUS_REJECTED = 2;
 
-  // In an attempt to avoid silent exceptions, unhandled rejections are
-  // tracked and if they aren't handled in a certain amount of time an
-  // error is logged.
-  var REJECTION_TIMEOUT = 500;
+/**
+ * Creates a promise capability object.
+ * @alias createPromiseCapability
+ *
+ * @returns {PromiseCapability}
+ */
+function createPromiseCapability() {
+  const capability = Object.create(null);
+  let isSettled = false;
 
-  var HandlerManager = {
-    handlers: [],
-    running: false,
-    unhandledRejections: [],
-    pendingRejectionCheck: false,
-
-    scheduleHandlers: function scheduleHandlers(promise) {
-      if (promise._status == STATUS_PENDING) {
-        return;
-      }
-
-      this.handlers = this.handlers.concat(promise._handlers);
-      promise._handlers = [];
-
-      if (this.running) {
-        return;
-      }
-      this.running = true;
-
-      setTimeout(this.runHandlers.bind(this), 0);
+  Object.defineProperty(capability, "settled", {
+    get() {
+      return isSettled;
     },
+  });
+  capability.promise = new Promise(function (resolve, reject) {
+    capability.resolve = function (data) {
+      isSettled = true;
+      resolve(data);
+    };
+    capability.reject = function (reason) {
+      isSettled = true;
+      reject(reason);
+    };
+  });
+  return capability;
+}
 
-    runHandlers: function runHandlers() {
-      var RUN_TIMEOUT = 1; // ms
-      var timeoutAt = Date.now() + RUN_TIMEOUT;
-      while (this.handlers.length > 0) {
-        var handler = this.handlers.shift();
-
-        var nextStatus = handler.thisPromise._status;
-        var nextValue = handler.thisPromise._value;
-
-        try {
-          if (nextStatus === STATUS_RESOLVED) {
-            if (typeof(handler.onResolve) == 'function') {
-              nextValue = handler.onResolve(nextValue);
-            }
-          } else if (typeof(handler.onReject) === 'function') {
-              nextValue = handler.onReject(nextValue);
-              nextStatus = STATUS_RESOLVED;
-
-              if (handler.thisPromise._unhandledRejection) {
-                this.removeUnhandeledRejection(handler.thisPromise);
-              }
-          }
-        } catch (ex) {
-          nextStatus = STATUS_REJECTED;
-          nextValue = ex;
-        }
-
-        handler.nextPromise._updateStatus(nextStatus, nextValue);
-        if (Date.now() >= timeoutAt) {
-          break;
-        }
-      }
-
-      if (this.handlers.length > 0) {
-        setTimeout(this.runHandlers.bind(this), 0);
-        return;
-      }
-
-      this.running = false;
-    },
-
-    addUnhandledRejection: function addUnhandledRejection(promise) {
-      this.unhandledRejections.push({
-        promise: promise,
-        time: Date.now()
-      });
-      this.scheduleRejectionCheck();
-    },
-
-    removeUnhandeledRejection: function removeUnhandeledRejection(promise) {
-      promise._unhandledRejection = false;
-      for (var i = 0; i < this.unhandledRejections.length; i++) {
-        if (this.unhandledRejections[i].promise === promise) {
-          this.unhandledRejections.splice(i);
-          i--;
-        }
-      }
-    },
-
-    scheduleRejectionCheck: function scheduleRejectionCheck() {
-      if (this.pendingRejectionCheck) {
-        return;
-      }
-      this.pendingRejectionCheck = true;
-      setTimeout(function rejectionCheck() {
-        this.pendingRejectionCheck = false;
-        var now = Date.now();
-        for (var i = 0; i < this.unhandledRejections.length; i++) {
-          if (now - this.unhandledRejections[i].time > REJECTION_TIMEOUT) {
-            var unhandled = this.unhandledRejections[i].promise._value;
-            var msg = 'Unhandled rejection: ' + unhandled;
-            if (unhandled.stack) {
-              msg += '\n' + unhandled.stack;
-            }
-            warn(msg);
-            this.unhandledRejections.splice(i);
-            i--;
-          }
-        }
-        if (this.unhandledRejections.length) {
-          this.scheduleRejectionCheck();
-        }
-      }.bind(this), REJECTION_TIMEOUT);
-    }
-  };
-
-  function Promise(resolver) {
-    this._status = STATUS_PENDING;
-    this._handlers = [];
-    resolver.call(this, this._resolve.bind(this), this._reject.bind(this));
-  }
-  /**
-   * Builds a promise that is resolved when all the passed in promises are
-   * resolved.
-   * @param {array} array of data and/or promises to wait for.
-   * @return {Promise} New dependant promise.
-   */
-  Promise.all = function Promise_all(promises) {
-    var resolveAll, rejectAll;
-    var deferred = new Promise(function (resolve, reject) {
-      resolveAll = resolve;
-      rejectAll = reject;
-    });
-    var unresolved = promises.length;
-    var results = [];
-    if (unresolved === 0) {
-      resolveAll(results);
-      return deferred;
-    }
-    function reject(reason) {
-      if (deferred._status === STATUS_REJECTED) {
-        return;
-      }
-      results = [];
-      rejectAll(reason);
-    }
-    for (var i = 0, ii = promises.length; i < ii; ++i) {
-      var promise = promises[i];
-      var resolve = (function(i) {
-        return function(value) {
-          if (deferred._status === STATUS_REJECTED) {
-            return;
-          }
-          results[i] = value;
-          unresolved--;
-          if (unresolved === 0)
-            resolveAll(results);
-        };
-      })(i);
-      if (Promise.isPromise(promise)) {
-        promise.then(resolve, reject);
-      } else {
-        resolve(promise);
-      }
-    }
-    return deferred;
-  };
-
-  /**
-   * Checks if the value is likely a promise (has a 'then' function).
-   * @return {boolean} true if x is thenable
-   */
-  Promise.isPromise = function Promise_isPromise(value) {
-    return value && typeof value.then === 'function';
-  };
-  /**
-   * Creates resolved promise
-   * @param x resolve value
-   * @returns {Promise}
-   */
-  Promise.resolve = function Promise_resolve(x) {
-    return new Promise(function (resolve) { resolve(x); });
-  };
-
-  Promise.prototype = {
-    _status: null,
-    _value: null,
-    _handlers: null,
-    _unhandledRejection: null,
-
-    _updateStatus: function Promise__updateStatus(status, value) {
-      if (this._status === STATUS_RESOLVED ||
-          this._status === STATUS_REJECTED) {
-        return;
-      }
-
-      if (status == STATUS_RESOLVED &&
-          Promise.isPromise(value)) {
-        value.then(this._updateStatus.bind(this, STATUS_RESOLVED),
-                   this._updateStatus.bind(this, STATUS_REJECTED));
-        return;
-      }
-
-      this._status = status;
-      this._value = value;
-
-      if (status === STATUS_REJECTED && this._handlers.length === 0) {
-        this._unhandledRejection = true;
-        HandlerManager.addUnhandledRejection(this);
-      }
-
-      HandlerManager.scheduleHandlers(this);
-    },
-
-    _resolve: function Promise_resolve(value) {
-      this._updateStatus(STATUS_RESOLVED, value);
-    },
-
-    _reject: function Promise_reject(reason) {
-      this._updateStatus(STATUS_REJECTED, reason);
-    },
-
-    then: function Promise_then(onResolve, onReject) {
-      var nextPromise = new Promise(function (resolve, reject) {
-        this.resolve = reject;
-        this.reject = reject;
-      });
-      this._handlers.push({
-        thisPromise: this,
-        onResolve: onResolve,
-        onReject: onReject,
-        nextPromise: nextPromise
-      });
-      HandlerManager.scheduleHandlers(this);
-      return nextPromise;
-    }
-  };
-
-  globalScope.Promise = Promise;
-//#else
-//throw new Error('DOM Promise is not present');
-//#endif
-})();
-
-var StatTimer = (function StatTimerClosure() {
-  function rpad(str, pad, length) {
-    while (str.length < length)
-      str += pad;
-    return str;
-  }
-  function StatTimer() {
-    this.started = {};
-    this.times = [];
-    this.enabled = true;
-  }
-  StatTimer.prototype = {
-    time: function StatTimer_time(name) {
-      if (!this.enabled)
-        return;
-      if (name in this.started)
-        warn('Timer is already running for ' + name);
-      this.started[name] = Date.now();
-    },
-    timeEnd: function StatTimer_timeEnd(name) {
-      if (!this.enabled)
-        return;
-      if (!(name in this.started))
-        warn('Timer has not been started for ' + name);
-      this.times.push({
-        'name': name,
-        'start': this.started[name],
-        'end': Date.now()
-      });
-      // Remove timer from started so it can be called again.
-      delete this.started[name];
-    },
-    toString: function StatTimer_toString() {
-      var times = this.times;
-      var out = '';
-      // Find the longest name for padding purposes.
-      var longest = 0;
-      for (var i = 0, ii = times.length; i < ii; ++i) {
-        var name = times[i]['name'];
-        if (name.length > longest)
-          longest = name.length;
-      }
-      for (var i = 0, ii = times.length; i < ii; ++i) {
-        var span = times[i];
-        var duration = span.end - span.start;
-        out += rpad(span['name'], ' ', longest) + ' ' + duration + 'ms\n';
-      }
-      return out;
-    }
-  };
-  return StatTimer;
-})();
-
-PDFJS.createBlob = function createBlob(data, contentType) {
-  if (typeof Blob !== 'undefined')
-    return new Blob([data], { type: contentType });
-  // Blob builder is deprecated in FF14 and removed in FF18.
-  var bb = new MozBlobBuilder();
-  bb.append(data);
-  return bb.getBlob(contentType);
-};
-
-PDFJS.createObjectURL = (function createObjectURLClosure() {
+const createObjectURL = (function createObjectURLClosure() {
   // Blob/createObjectURL is not available, falling back to data schema.
-  var digits =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const digits =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
-  return function createObjectURL(data, contentType) {
-    if (!PDFJS.disableCreateObjectURL &&
-        typeof URL !== 'undefined' && URL.createObjectURL) {
-      var blob = PDFJS.createBlob(data, contentType);
+  // eslint-disable-next-line no-shadow
+  return function createObjectURL(data, contentType, forceDataSchema = false) {
+    if (!forceDataSchema && URL.createObjectURL) {
+      const blob = new Blob([data], { type: contentType });
       return URL.createObjectURL(blob);
     }
 
-    var buffer = 'data:' + contentType + ';base64,';
-    for (var i = 0, ii = data.length; i < ii; i += 3) {
-      var b1 = data[i] & 0xFF;
-      var b2 = data[i + 1] & 0xFF;
-      var b3 = data[i + 2] & 0xFF;
-      var d1 = b1 >> 2, d2 = ((b1 & 3) << 4) | (b2 >> 4);
-      var d3 = i + 1 < ii ? ((b2 & 0xF) << 2) | (b3 >> 6) : 64;
-      var d4 = i + 2 < ii ? (b3 & 0x3F) : 64;
+    let buffer = `data:${contentType};base64,`;
+    for (let i = 0, ii = data.length; i < ii; i += 3) {
+      const b1 = data[i] & 0xff;
+      const b2 = data[i + 1] & 0xff;
+      const b3 = data[i + 2] & 0xff;
+      const d1 = b1 >> 2,
+        d2 = ((b1 & 3) << 4) | (b2 >> 4);
+      const d3 = i + 1 < ii ? ((b2 & 0xf) << 2) | (b3 >> 6) : 64;
+      const d4 = i + 2 < ii ? b3 & 0x3f : 64;
       buffer += digits[d1] + digits[d2] + digits[d3] + digits[d4];
     }
     return buffer;
   };
 })();
 
-function MessageHandler(name, comObj) {
-  this.name = name;
-  this.comObj = comObj;
-  this.callbackIndex = 1;
-  this.postMessageTransfers = true;
-  var callbacks = this.callbacks = {};
-  var ah = this.actionHandler = {};
-
-  ah['console_log'] = [function ahConsoleLog(data) {
-    console.log.apply(console, data);
-  }];
-  ah['console_error'] = [function ahConsoleError(data) {
-    console.error.apply(console, data);
-  }];
-  ah['_unsupported_feature'] = [function ah_unsupportedFeature(data) {
-    UnsupportedManager.notify(data);
-  }];
-
-  comObj.onmessage = function messageHandlerComObjOnMessage(event) {
-    var data = event.data;
-    if (data.isReply) {
-      var callbackId = data.callbackId;
-      if (data.callbackId in callbacks) {
-        var callback = callbacks[callbackId];
-        delete callbacks[callbackId];
-        callback(data.data);
-      } else {
-        error('Cannot resolve callback ' + callbackId);
-      }
-    } else if (data.action in ah) {
-      var action = ah[data.action];
-      if (data.callbackId) {
-        var deferred = {};
-        var promise = new Promise(function (resolve, reject) {
-          deferred.resolve = resolve;
-          deferred.reject = reject;
-        });
-        deferred.promise = promise;
-        promise.then(function(resolvedData) {
-          comObj.postMessage({
-            isReply: true,
-            callbackId: data.callbackId,
-            data: resolvedData
-          });
-        });
-        action[0].call(action[1], data.data, deferred);
-      } else {
-        action[0].call(action[1], data.data);
-      }
-    } else {
-      error('Unkown action from worker: ' + data.action);
-    }
-  };
-}
-
-MessageHandler.prototype = {
-  on: function messageHandlerOn(actionName, handler, scope) {
-    var ah = this.actionHandler;
-    if (ah[actionName]) {
-      error('There is already an actionName called "' + actionName + '"');
-    }
-    ah[actionName] = [handler, scope];
-  },
-  /**
-   * Sends a message to the comObj to invoke the action with the supplied data.
-   * @param {String} actionName Action to call.
-   * @param {JSON} data JSON data to send.
-   * @param {function} [callback] Optional callback that will handle a reply.
-   * @param {Array} [transfers] Optional list of transfers/ArrayBuffers
-   */
-  send: function messageHandlerSend(actionName, data, callback, transfers) {
-    var message = {
-      action: actionName,
-      data: data
-    };
-    if (callback) {
-      var callbackId = this.callbackIndex++;
-      this.callbacks[callbackId] = callback;
-      message.callbackId = callbackId;
-    }
-    if (transfers && this.postMessageTransfers) {
-      this.comObj.postMessage(message, transfers);
-    } else {
-      this.comObj.postMessage(message);
-    }
-  }
+const XMLEntities = {
+  /* < */ 0x3c: "&lt;",
+  /* > */ 0x3e: "&gt;",
+  /* & */ 0x26: "&amp;",
+  /* " */ 0x22: "&quot;",
+  /* ' */ 0x27: "&apos;",
 };
 
-function loadJpegStream(id, imageUrl, objs) {
-  var img = new Image();
-  img.onload = (function loadJpegStream_onloadClosure() {
-    objs.resolve(id, img);
-  });
-  img.src = imageUrl;
+function encodeToXmlString(str) {
+  const buffer = [];
+  let start = 0;
+  for (let i = 0, ii = str.length; i < ii; i++) {
+    const char = str.codePointAt(i);
+    if (0x20 <= char && char <= 0x7e) {
+      // ascii
+      const entity = XMLEntities[char];
+      if (entity) {
+        if (start < i) {
+          buffer.push(str.substring(start, i));
+        }
+        buffer.push(entity);
+        start = i + 1;
+      }
+    } else {
+      if (start < i) {
+        buffer.push(str.substring(start, i));
+      }
+      buffer.push(`&#x${char.toString(16).toUpperCase()};`);
+      if (char > 0xd7ff && (char < 0xe000 || char > 0xfffd)) {
+        // char is represented by two u16
+        i++;
+      }
+      start = i + 1;
+    }
+  }
+
+  if (buffer.length === 0) {
+    return str;
+  }
+
+  if (start < str.length) {
+    buffer.push(str.substring(start, str.length));
+  }
+
+  return buffer.join("");
 }
+
+export {
+  AbortException,
+  AnnotationActionEventType,
+  AnnotationBorderStyleType,
+  AnnotationFieldFlag,
+  AnnotationFlag,
+  AnnotationMarkedState,
+  AnnotationReplyType,
+  AnnotationReviewState,
+  AnnotationStateModelType,
+  AnnotationType,
+  arrayByteLength,
+  arraysToBytes,
+  assert,
+  BaseException,
+  bytesToString,
+  CMapCompressionType,
+  createObjectURL,
+  createPromiseCapability,
+  createValidAbsoluteUrl,
+  DocumentActionEventType,
+  encodeToXmlString,
+  escapeString,
+  FONT_IDENTITY_MATRIX,
+  FontType,
+  FormatError,
+  getModificationDate,
+  getVerbosityLevel,
+  IDENTITY_MATRIX,
+  ImageKind,
+  info,
+  InvalidPDFException,
+  isArrayBuffer,
+  isArrayEqual,
+  isAscii,
+  isBool,
+  IsEvalSupportedCached,
+  IsLittleEndianCached,
+  isNum,
+  isSameOrigin,
+  isString,
+  MissingPDFException,
+  objectFromEntries,
+  objectSize,
+  OPS,
+  PageActionEventType,
+  PasswordException,
+  PasswordResponses,
+  PermissionFlag,
+  removeNullCharacters,
+  setVerbosityLevel,
+  shadow,
+  StreamType,
+  string32,
+  stringToBytes,
+  stringToPDFString,
+  stringToUTF16BEString,
+  stringToUTF8String,
+  TextRenderingMode,
+  UnexpectedResponseException,
+  UnknownErrorException,
+  unreachable,
+  UNSUPPORTED_FEATURES,
+  utf8StringToString,
+  Util,
+  VerbosityLevel,
+  warn,
+};

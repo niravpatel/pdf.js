@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +13,7 @@
  * limitations under the License.
  */
 /* globals CFFDictDataMap, CFFDictPrivateDataMap, CFFEncodingMap, CFFStrings,
-           Components, Dict, dump, error, isNum, netscape, Stream */
+           Components, Dict, dump, FormatError, isNum, netscape, Stream */
 
 'use strict';
 
@@ -37,25 +35,26 @@ function readCharset(aStream, aCharstrings) {
 
   var format = aStream.getByte();
   var count = aCharstrings.length - 1;
+  var i, sid;
   if (format === 0) {
     charset['.notdef'] = readCharstringEncoding(aCharstrings[0]);
 
-    for (var i = 1; i < count + 1; i++) {
-      var sid = aStream.getByte() << 8 | aStream.getByte();
+    for (i = 1; i < count + 1; i++) {
+      sid = aStream.getByte() << 8 | aStream.getByte();
       charset[CFFStrings[sid]] = readCharstringEncoding(aCharstrings[i]);
     }
-  } else if (format == 1) {
-    for (var i = 1; i < count + 1; i++) {
+  } else if (format === 1) {
+    for (i = 1; i < count + 1; i++) {
       var first = aStream.getByte();
       first = (first << 8) | aStream.getByte();
       var numLeft = aStream.getByte();
       for (var j = 0; j <= numLeft; j++) {
-        var sid = first++;
+        sid = first++;
         charset[CFFStrings[sid]] = readCharstringEncoding(aCharstrings[j]);
       }
     }
   } else {
-    error('Invalid charset format');
+    throw new FormatError('Invalid charset format');
   }
 
   return charset;
@@ -67,30 +66,31 @@ function readCharset(aStream, aCharstrings) {
  * chapter 3.1.
  */
 function readCharstringEncoding(aString) {
-  if (!aString)
+  if (!aString) {
     return '';
+  }
 
   var charstringTokens = [];
 
   var count = aString.length;
   for (var i = 0; i < count; ) {
-    var value = aString[i++];
+    var value = aString[i++] | 0;
     var token = null;
 
     if (value < 0) {
       continue;
     } else if (value <= 11) {
       token = CFFEncodingMap[value];
-    } else if (value == 12) {
+    } else if (value === 12) {
       token = CFFEncodingMap[value][aString[i++]];
     } else if (value <= 18) {
       token = CFFEncodingMap[value];
     } else if (value <= 20) {
-      var mask = aString[i++];
+      ++i; // var mask = aString[i++];
       token = CFFEncodingMap[value];
     } else if (value <= 27) {
       token = CFFEncodingMap[value];
-    } else if (value == 28) {
+    } else if (value === 28) {
       token = aString[i++] << 8 | aString[i++];
     } else if (value <= 31) {
       token = CFFEncodingMap[value];
@@ -100,7 +100,7 @@ function readCharstringEncoding(aString) {
       token = (value - 247) * 256 + aString[i++] + 108;
     } else if (value < 255) {
       token = -(value - 251) * 256 - aString[i++] - 108;
-    } else {// value == 255
+    } else { // value === 255
       token = aString[i++] << 24 | aString[i++] << 16 |
               aString[i++] << 8 | aString[i];
     }
@@ -120,20 +120,20 @@ function readFontDictData(aString, aMap) {
   var fontDictDataTokens = [];
 
   var count = aString.length;
-  for (var i = 0; i < count; i) {
-    var value = aString[i++];
+  for (var i = 0; i < count; ) {
+    var value = aString[i++] | 0;
     var token = null;
 
-    if (value == 12) {
+    if (value === 12) {
       token = aMap[value][aString[i++]];
-    } else if (value == 28) {
+    } else if (value === 28) {
       token = aString[i++] << 8 | aString[i++];
-    } else if (value == 29) {
+    } else if (value === 29) {
       token = aString[i++] << 24 |
               aString[i++] << 16 |
               aString[i++] << 8 |
               aString[i++];
-    } else if (value == 30) {
+    } else if (value === 30) {
       token = '';
       var parsed = false;
       while (!parsed) {
@@ -175,8 +175,8 @@ function readFontDictData(aString, aMap) {
       token = (value - 247) * 256 + aString[i++] + 108;
     } else if (value <= 254) {
       token = -(value - 251) * 256 - aString[i++] - 108;
-    } else if (value == 255) {
-      error('255 is not a valid DICT command');
+    } else if (value === 255) {
+      throw new FormatError('255 is not a valid DICT command');
     }
 
     fontDictDataTokens.push(token);
@@ -217,28 +217,30 @@ function readFontIndexData(aStream, aIsByte) {
       return aStream.getByte() << 24 | aStream.getByte() << 16 |
              aStream.getByte() << 8 | aStream.getByte();
     }
-    error(offsize + ' is not a valid offset size');
-    return null;
+    throw new FormatError(offsize + ' is not a valid offset size');
   }
 
   var offsets = [];
-  for (var i = 0; i < count + 1; i++)
+  var i;
+  for (i = 0; i < count + 1; i++) {
     offsets.push(getNextOffset());
+  }
 
   dump('Found ' + count + ' objects at offsets :' +
-      offsets + ' (offsize: ' + offsize + ')');
+       offsets + ' (offsize: ' + offsize + ')');
 
   // Now extract the objects
   var relativeOffset = aStream.pos;
   var objects = [];
-  for (var i = 0; i < count; i++) {
+  for (i = 0; i < count; i++) {
     var offset = offsets[i];
     aStream.pos = relativeOffset + offset - 1;
 
     var data = [];
     var length = offsets[i + 1] - 1;
-    for (var j = offset - 1; j < length; j++)
+    for (var j = offset - 1; j < length; j++) {
       data.push(aIsByte ? aStream.getByte() : aStream.getChar());
+    }
     objects.push(data);
   }
 
@@ -246,15 +248,14 @@ function readFontIndexData(aStream, aIsByte) {
 }
 
 var Type2Parser = function type2Parser(aFilePath) {
-  var font = new Dict();
+  var font = new Dict(null);
 
   var xhr = new XMLHttpRequest();
   xhr.open('GET', aFilePath, false);
-  xhr.mozResponseType = xhr.responseType = 'arraybuffer';
-  xhr.expected = (document.URL.indexOf('file:') === 0) ? 0 : 200;
+  xhr.responseType = 'arraybuffer';
+  xhr.expected = document.URL.startsWith('file:') ? 0 : 200;
   xhr.send(null);
-  this.data = new Stream(xhr.mozResponseArrayBuffer || xhr.mozResponse ||
-                         xhr.responseArrayBuffer || xhr.response);
+  this.data = new Stream(xhr.response);
 
   // Turn on this flag for additional debugging logs
   var debug = false;
@@ -294,8 +295,9 @@ var Type2Parser = function type2Parser(aFilePath) {
           default:
             if (token.operand && token.operand.length) {
               var array = [];
-              for (var j = 0; j < token.operand.length; j++)
+              for (var j = 0; j < token.operand.length; j++) {
                 array.push(stack.pop());
+              }
               font.set(token.name, array);
             } else {
               font.set(token.name, stack.pop());
@@ -328,14 +330,16 @@ var Type2Parser = function type2Parser(aFilePath) {
     dump('strings: ' + strings);
 
     // Fill up the Strings dictionary with the new unique strings
-    for (var i = 0; i < strings.length; i++)
+    var i;
+    for (i = 0; i < strings.length; i++) {
       CFFStrings.push(strings[i].join(''));
+    }
 
     // Parse the TopDict operator
-    var objects = [];
     var count = topDict.length;
-    for (var i = 0; i < count; i++)
+    for (i = 0; i < count; i++) {
       parseAsToken(topDict[i], CFFDictDataMap);
+    }
 
     // Read the Global Subr Index that comes just after the Strings Index
     // (cf. "The Compact Font Format Specification" Chapter 16)
@@ -350,13 +354,15 @@ var Type2Parser = function type2Parser(aFilePath) {
     aStream.pos = priv.offset;
 
     var privateDict = [];
-    for (var i = 0; i < priv.size; i++)
+    for (i = 0; i < priv.size; i++) {
       privateDict.push(aStream.getByte());
+    }
     dump('privateData:' + privateDict);
     parseAsToken(privateDict, CFFDictPrivateDataMap);
 
-    for (var p in font.map)
-      dump(p + '::' + font.get(p));
+    font.forEach(function(key, value) {
+      dump(key + '::' + value);
+    });
 
     // Read CharStrings Index
     var charStringsOffset = font.get('CharStrings');
@@ -368,14 +374,14 @@ var Type2Parser = function type2Parser(aFilePath) {
     dump('Read Charset for ' + charStrings.length + ' glyphs');
     var charsetEntry = font.get('charset');
     if (charsetEntry === 0) {
-      error('Need to support CFFISOAdobeCharset');
-    } else if (charsetEntry == 1) {
-      error('Need to support CFFExpert');
-    } else if (charsetEntry == 2) {
-      error('Need to support CFFExpertSubsetCharset');
+      throw new FormatError('Need to support CFFISOAdobeCharset');
+    } else if (charsetEntry === 1) {
+      throw new FormatError('Need to support CFFExpert');
+    } else if (charsetEntry === 2) {
+      throw new FormatError('Need to support CFFExpertSubsetCharset');
     } else {
       aStream.pos = charsetEntry;
-      var charset = readCharset(aStream, charStrings);
+      readCharset(aStream, charStrings);
     }
   };
 };
@@ -391,7 +397,6 @@ var Type2Parser = function type2Parser(aFilePath) {
  *  var file = new Uint8Array(cffFileArray, 0, cffFileSize);
  *  var parser = new Type2Parser();
  *  parser.parse(new Stream(file));
- *
  */
 
 /*
@@ -402,8 +407,9 @@ var Type2Parser = function type2Parser(aFilePath) {
  * writeToFile(fontData, "/tmp/pdf.js." + fontCount + ".cff");
  */
 function writeToFile(aBytes, aFilePath) {
-  if (!('netscape' in window))
+  if (!('netscape' in window)) {
     return;
+  }
 
   netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
   var Cc = Components.classes,
@@ -421,4 +427,3 @@ function writeToFile(aBytes, aFilePath) {
   bos.writeByteArray(aBytes, aBytes.length);
   stream.close();
 }
-
